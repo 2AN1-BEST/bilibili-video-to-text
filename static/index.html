@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B站视频转文字</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+            padding: 40px;
+            width: 100%;
+            max-width: 640px;
+        }
+
+        h1 {
+            font-size: 24px;
+            color: #1a1a2e;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 28px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #444;
+            margin-bottom: 6px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 15px;
+            transition: border-color 0.2s;
+            outline: none;
+        }
+
+        input[type="text"]:focus {
+            border-color: #667eea;
+        }
+
+        select {
+            width: 100%;
+            padding: 10px 14px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 14px;
+            background: #fff;
+            outline: none;
+            cursor: pointer;
+        }
+
+        select:focus { border-color: #667eea; }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            margin-top: 8px;
+        }
+
+        .btn:hover { opacity: 0.9; }
+        .btn:active { transform: scale(0.98); }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* 进度区域 */
+        .progress-area {
+            display: none;
+            margin-top: 24px;
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .progress-area.visible { display: block; }
+
+        .progress-steps {
+            list-style: none;
+        }
+
+        .progress-steps li {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 0;
+            font-size: 14px;
+            color: #999;
+        }
+
+        .progress-steps li.active { color: #667eea; font-weight: 600; }
+        .progress-steps li.done { color: #48bb78; }
+
+        .step-icon {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            background: #e2e8f0;
+            color: #666;
+            flex-shrink: 0;
+        }
+
+        li.active .step-icon {
+            background: #667eea;
+            color: #fff;
+            animation: pulse 1.2s infinite;
+        }
+
+        li.done .step-icon { background: #48bb78; color: #fff; }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.4); }
+            50% { box-shadow: 0 0 0 6px rgba(102, 126, 234, 0); }
+        }
+
+        /* 结果区域 */
+        .result-area {
+            display: none;
+            margin-top: 24px;
+        }
+
+        .result-area.visible { display: block; }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .result-header h3 {
+            font-size: 16px;
+            color: #1a1a2e;
+        }
+
+        .result-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-small {
+            padding: 6px 14px;
+            font-size: 13px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            background: #fff;
+            color: #444;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-small:hover { background: #f7fafc; border-color: #667eea; color: #667eea; }
+
+        .result-text {
+            width: 100%;
+            min-height: 200px;
+            max-height: 400px;
+            padding: 16px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 14px;
+            line-height: 1.8;
+            color: #333;
+            resize: vertical;
+            outline: none;
+            background: #fafafa;
+        }
+
+        /* 错误提示 */
+        .error-msg {
+            display: none;
+            margin-top: 16px;
+            padding: 12px 16px;
+            background: #fff5f5;
+            border: 1px solid #fed7d7;
+            border-radius: 10px;
+            color: #c53030;
+            font-size: 14px;
+        }
+
+        .error-msg.visible { display: block; }
+
+        .hint {
+            margin-top: 12px;
+            font-size: 12px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>B站视频转文字</h1>
+        <p class="subtitle">粘贴B站视频链接，自动提取语音并转为文字</p>
+
+        <div class="form-group">
+            <label for="videoUrl">视频链接</label>
+            <input type="text" id="videoUrl" placeholder="https://www.bilibili.com/video/BVxxxxxx">
+        </div>
+
+        <div class="form-group">
+            <label for="modelSelect">识别模型</label>
+            <select id="modelSelect">
+                <option value="tiny">tiny - 最快，精度一般</option>
+                <option value="base" selected>base - 较快，精度良好</option>
+                <option value="small">small - 中等速度，精度较高</option>
+                <option value="medium">medium - 较慢，精度高</option>
+                <option value="large">large - 最慢，精度最高（需大内存）</option>
+            </select>
+        </div>
+
+        <button class="btn" id="submitBtn" onclick="startTranscribe()">开始转写</button>
+
+        <p class="hint">提示：首次使用某个模型时会自动下载，请耐心等待。视频越长处理时间越久。</p>
+
+        <!-- 进度 -->
+        <div class="progress-area" id="progressArea">
+            <ul class="progress-steps">
+                <li id="step-download"><span class="step-icon">1</span> 下载视频</li>
+                <li id="step-extract"><span class="step-icon">2</span> 提取音频</li>
+                <li id="step-transcribe"><span class="step-icon">3</span> 语音识别</li>
+                <li id="step-done"><span class="step-icon">4</span> 完成</li>
+            </ul>
+        </div>
+
+        <!-- 错误 -->
+        <div class="error-msg" id="errorMsg"></div>
+
+        <!-- 结果 -->
+        <div class="result-area" id="resultArea">
+            <div class="result-header">
+                <h3>转写结果</h3>
+                <div class="result-actions">
+                    <button class="btn-small" onclick="copyResult()">复制文本</button>
+                    <button class="btn-small" onclick="downloadResult()">下载 TXT</button>
+                </div>
+            </div>
+            <textarea class="result-text" id="resultText" readonly></textarea>
+        </div>
+    </div>
+
+    <script>
+        let currentTaskId = null;
+        let pollTimer = null;
+
+        async function startTranscribe() {
+            const url = document.getElementById('videoUrl').value.trim();
+            const model = document.getElementById('modelSelect').value;
+
+            if (!url) {
+                showError('请输入视频链接');
+                return;
+            }
+
+            // 重置 UI
+            hideError();
+            document.getElementById('resultArea').classList.remove('visible');
+            document.getElementById('progressArea').classList.add('visible');
+            document.getElementById('submitBtn').disabled = true;
+            resetSteps();
+
+            try {
+                const resp = await fetch('/api/transcribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, model }),
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    showError(data.detail || '提交失败');
+                    document.getElementById('submitBtn').disabled = false;
+                    document.getElementById('progressArea').classList.remove('visible');
+                    return;
+                }
+
+                currentTaskId = data.task_id;
+                startPolling();
+            } catch (e) {
+                showError('网络错误: ' + e.message);
+                document.getElementById('submitBtn').disabled = false;
+            }
+        }
+
+        function startPolling() {
+            pollTimer = setInterval(checkStatus, 2000);
+        }
+
+        async function checkStatus() {
+            if (!currentTaskId) return;
+
+            try {
+                const resp = await fetch(`/api/task/${currentTaskId}`);
+                const data = await resp.json();
+
+                updateSteps(data.status);
+
+                if (data.status === 'completed') {
+                    clearInterval(pollTimer);
+                    document.getElementById('submitBtn').disabled = false;
+                    document.getElementById('resultText').value = data.result;
+                    document.getElementById('resultArea').classList.add('visible');
+                } else if (data.status === 'failed') {
+                    clearInterval(pollTimer);
+                    document.getElementById('submitBtn').disabled = false;
+                    document.getElementById('progressArea').classList.remove('visible');
+                    showError(data.error || '处理失败');
+                }
+            } catch (e) {
+                // 网络波动时继续轮询
+            }
+        }
+
+        function updateSteps(status) {
+            const steps = ['download', 'extract', 'transcribe', 'done'];
+            const statusMap = {
+                'pending': -1,
+                'downloading': 0,
+                'extracting': 1,
+                'transcribing': 2,
+                'completed': 3,
+            };
+
+            const activeIdx = statusMap[status] ?? -1;
+
+            steps.forEach((step, idx) => {
+                const el = document.getElementById(`step-${step}`);
+                el.className = '';
+                if (idx < activeIdx) el.className = 'done';
+                else if (idx === activeIdx) el.className = 'active';
+            });
+
+            if (status === 'completed') {
+                steps.forEach(step => {
+                    document.getElementById(`step-${step}`).className = 'done';
+                });
+            }
+        }
+
+        function resetSteps() {
+            ['download', 'extract', 'transcribe', 'done'].forEach(step => {
+                document.getElementById(`step-${step}`).className = '';
+            });
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('errorMsg');
+            el.textContent = msg;
+            el.classList.add('visible');
+        }
+
+        function hideError() {
+            document.getElementById('errorMsg').classList.remove('visible');
+        }
+
+        function copyResult() {
+            const text = document.getElementById('resultText').value;
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = event.target;
+                btn.textContent = '已复制!';
+                setTimeout(() => btn.textContent = '复制文本', 1500);
+            });
+        }
+
+        function downloadResult() {
+            if (currentTaskId) {
+                window.open(`/api/download/${currentTaskId}`, '_blank');
+            }
+        }
+
+        // 回车提交
+        document.getElementById('videoUrl').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') startTranscribe();
+        });
+    </script>
+</body>
+</html>
