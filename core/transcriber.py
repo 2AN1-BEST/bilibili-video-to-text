@@ -1,7 +1,10 @@
 """语音转写模块 - 使用 OpenAI Whisper 进行语音识别"""
 
 import whisper
+from opencc import OpenCC
 
+# 繁体转简体转换器
+_t2s = OpenCC("t2s")
 
 _model_cache = {}
 
@@ -15,7 +18,7 @@ def get_model(model_name: str = "base"):
 
 def transcribe_audio(audio_path: str, model_name: str = "base", language: str = "zh") -> str:
     """
-    使用 Whisper 将音频转写为文本。
+    使用 Whisper 将音频转写为文本，并统一输出简体中文。
 
     Args:
         audio_path: 音频文件路径（WAV 格式）
@@ -23,7 +26,7 @@ def transcribe_audio(audio_path: str, model_name: str = "base", language: str = 
         language: 语言代码，默认中文 "zh"
 
     Returns:
-        转写的纯文本内容
+        转写的简体中文文本
     """
     model = get_model(model_name)
 
@@ -33,4 +36,10 @@ def transcribe_audio(audio_path: str, model_name: str = "base", language: str = 
         verbose=False,
     )
 
-    return result["text"].strip()
+    text = result["text"].strip()
+
+    # 繁体转简体
+    if language == "zh":
+        text = _t2s.convert(text)
+
+    return text

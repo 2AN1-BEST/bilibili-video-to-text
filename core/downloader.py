@@ -43,7 +43,7 @@ def download_video(url: str, output_dir: str, progress_callback=None) -> str:
         # 绕过B站 412 反爬
         "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
         "--referer", "https://www.bilibili.com",
-        "--cookies-from-browser", "chrome",
+        "--extractor-args", "bilibili:api=app",
         url,
     ]
 
