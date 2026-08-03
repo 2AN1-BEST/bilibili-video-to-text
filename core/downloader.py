@@ -40,10 +40,12 @@ def download_video(url: str, output_dir: str, progress_callback=None) -> str:
         "-o", output_template,
         "--no-overwrites",
         "--print", "after_move:filepath",
-        # 绕过B站 412 反爬
+        # 绕过B站 412 反爬：完整浏览器请求头 + 视频页URL作为Referer
         "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-        "--referer", "https://www.bilibili.com",
-        "--extractor-args", "bilibili:api=app",
+        "--referer", url,
+        "--add-header", "Origin:https://www.bilibili.com",
+        "--add-header", "Accept:*/*",
+        "--add-header", "Accept-Language:zh-CN,zh;q=0.9",
         url,
     ]
 
