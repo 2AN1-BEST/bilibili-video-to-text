@@ -35,10 +35,11 @@ class TaskStatus(str, Enum):
 
 
 class Task:
-    def __init__(self, task_id: str, url: str, model: str):
+    def __init__(self, task_id: str, url: str, model: str, with_timestamps: bool = True):
         self.task_id = task_id
         self.url = url
         self.model = model
+        self.with_timestamps = with_timestamps
         self.status = TaskStatus.PENDING
         self.progress_message = "等待处理..."
         self.result_text = ""
@@ -54,6 +55,7 @@ tasks: dict[str, Task] = {}
 class TranscribeRequest(BaseModel):
     url: str
     model: str = "base"  # tiny / base / small / medium / large
+    with_timestamps: bool = True  # 是否分段并附带时间戳
 
 
 class TaskResponse(BaseModel):
@@ -83,7 +85,7 @@ def process_task(task: Task):
         # 3. 语音转写
         task.status = TaskStatus.TRANSCRIBING
         task.progress_message = f"正在转写语音（模型: {task.model}）..."
-        text = transcribe_audio(audio_path, model_name=task.model)
+        text = transcribe_audio(audio_path, model_name=task.model, with_timestamps=task.with_timestamps)
 
         # 4. 保存结果
         task.result_text = text
@@ -131,7 +133,7 @@ def create_transcribe_task(req: TranscribeRequest):
         raise HTTPException(status_code=400, detail=f"模型必须是: {', '.join(valid_models)}")
 
     task_id = uuid.uuid4().hex[:12]
-    task = Task(task_id=task_id, url=url, model=req.model)
+    task = Task(task_id=task_id, url=url, model=req.model, with_timestamps=req.with_timestamps)
     tasks[task_id] = task
 
     # 启动后台线程处理
