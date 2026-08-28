@@ -363,6 +363,7 @@
                 if (data.status === 'completed') {
                     clearInterval(pollTimer);
                     document.getElementById('submitBtn').disabled = false;
+                    document.getElementById('videoUrl').value = '';
                     document.getElementById('resultText').value = data.result;
                     document.getElementById('resultArea').classList.add('visible');
                 } else if (data.status === 'failed') {
