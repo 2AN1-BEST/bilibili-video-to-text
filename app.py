@@ -4,6 +4,9 @@ import os
 import uuid
 import shutil
 import threading
+import hashlib
+import json
+import time
 from enum import Enum
 from pathlib import Path
 
@@ -20,6 +23,13 @@ from core.transcriber import transcribe_audio
 BASE_DIR = Path(__file__).parent
 TEMP_DIR = BASE_DIR / "temp"
 TEMP_DIR.mkdir(exist_ok=True)
+CACHE_DIR = TEMP_DIR / "cache"
+CACHE_DIR.mkdir(exist_ok=True)
+
+try:
+    CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_DAYS", "7")) * 86400
+except ValueError:
+    CACHE_TTL_SECONDS = 7 * 86400
 
 app = FastAPI(title="B站视频转文字", version="1.0.0")
 
@@ -35,11 +45,20 @@ class TaskStatus(str, Enum):
 
 
 class Task:
-    def __init__(self, task_id: str, url: str, model: str, with_timestamps: bool = True):
+    def __init__(
+        self,
+        task_id: str,
+        url: str,
+        model: str,
+        with_timestamps: bool = True,
+        cache_key: str = "",
+    ):
         self.task_id = task_id
         self.url = url
         self.model = model
         self.with_timestamps = with_timestamps
+        self.cache_key = cache_key
+        self.created_at = time.time()
         self.status = TaskStatus.PENDING
         self.progress_message = "等待处理..."
         self.result_text = ""
@@ -49,6 +68,90 @@ class Task:
 
 # 内存中的任务存储
 tasks: dict[str, Task] = {}
+
+
+def _get_cache_key(url: str, model: str, with_timestamps: bool) -> str:
+    """为相同输入生成稳定的结果缓存键。"""
+    payload = json.dumps(
+        {"url": url, "model": model, "with_timestamps": with_timestamps},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _get_cache_result(cache_key: str) -> tuple[str, str] | None:
+    """读取未过期的结果缓存，返回结果文本和缓存目录。"""
+    cache_dir = CACHE_DIR / cache_key
+    result_path = cache_dir / "result.txt"
+    if not result_path.is_file():
+        return None
+    if time.time() - result_path.stat().st_mtime > CACHE_TTL_SECONDS:
+        shutil.rmtree(cache_dir, ignore_errors=True)
+        return None
+    return result_path.read_text(encoding="utf-8"), str(cache_dir)
+
+
+def _store_cache_result(cache_key: str, text: str):
+    """原子写入结果缓存，避免进程中断留下半个结果。"""
+    cache_dir = CACHE_DIR / cache_key
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = cache_dir / "result.txt.tmp"
+    temp_path.write_text(text, encoding="utf-8")
+    os.replace(temp_path, cache_dir / "result.txt")
+
+
+def _cleanup_expired_storage():
+    """清理过期任务目录、结果缓存，并移除过期的内存任务记录。"""
+    now = time.time()
+    active_dirs = {
+        os.path.abspath(task.work_dir)
+        for task in tasks.values()
+        if task.status in {
+            TaskStatus.PENDING,
+            TaskStatus.DOWNLOADING,
+            TaskStatus.EXTRACTING,
+            TaskStatus.TRANSCRIBING,
+        }
+    }
+
+    for directory in TEMP_DIR.iterdir():
+        if not directory.is_dir() or os.path.abspath(str(directory)) in active_dirs:
+            continue
+        try:
+            latest_mtime = max(
+                [directory.stat().st_mtime]
+                + [path.stat().st_mtime for path in directory.rglob("*") if path.is_file()]
+            )
+            if now - latest_mtime > CACHE_TTL_SECONDS:
+                shutil.rmtree(directory, ignore_errors=True)
+        except OSError:
+            continue
+
+    expired_task_ids = [
+        task_id
+        for task_id, task in tasks.items()
+        if task.status in {TaskStatus.COMPLETED, TaskStatus.FAILED}
+        and now - task.created_at > CACHE_TTL_SECONDS
+    ]
+    for task_id in expired_task_ids:
+        tasks.pop(task_id, None)
+
+
+def _cleanup_startup_storage():
+    """服务启动时强制清理上次运行遗留的任务工作目录。"""
+    for directory in TEMP_DIR.iterdir():
+        if directory.is_dir() and directory != CACHE_DIR:
+            shutil.rmtree(directory, ignore_errors=True)
+        elif directory.is_file():
+            try:
+                directory.unlink()
+            except OSError:
+                pass
+
+
+_cleanup_startup_storage()
+_cleanup_expired_storage()
 
 
 # ─── 请求/响应模型 ──────────────────────────────────────
@@ -69,18 +172,19 @@ class TaskResponse(BaseModel):
 # ─── 后台处理流程 ───────────────────────────────────────
 def process_task(task: Task):
     """在后台线程中执行完整的转写流程。"""
+    task_work_dir = task.work_dir
     try:
-        os.makedirs(task.work_dir, exist_ok=True)
+        os.makedirs(task_work_dir, exist_ok=True)
 
         # 1. 下载视频
         task.status = TaskStatus.DOWNLOADING
         task.progress_message = "正在下载视频..."
-        video_path = download_video(task.url, task.work_dir)
+        video_path = download_video(task.url, task_work_dir)
 
         # 2. 提取音频
         task.status = TaskStatus.EXTRACTING
         task.progress_message = "正在提取音频..."
-        audio_path = extract_audio(video_path, task.work_dir)
+        audio_path = extract_audio(video_path, task_work_dir)
 
         # 3. 语音转写
         task.status = TaskStatus.TRANSCRIBING
@@ -89,9 +193,13 @@ def process_task(task: Task):
 
         # 4. 保存结果
         task.result_text = text
-        result_path = os.path.join(task.work_dir, "result.txt")
+        result_path = os.path.join(task_work_dir, "result.txt")
         with open(result_path, "w", encoding="utf-8") as f:
             f.write(text)
+
+        _store_cache_result(task.cache_key, text)
+        task.work_dir = str(CACHE_DIR / task.cache_key)
+        shutil.rmtree(task_work_dir, ignore_errors=True)
 
         task.status = TaskStatus.COMPLETED
         task.progress_message = "转写完成！"
@@ -103,7 +211,8 @@ def process_task(task: Task):
 
     finally:
         # 清理视频和音频大文件，保留结果
-        _cleanup_media(task.work_dir)
+        _cleanup_media(task_work_dir)
+        _cleanup_expired_storage()
 
 
 def _cleanup_media(work_dir: str):
@@ -132,9 +241,23 @@ def create_transcribe_task(req: TranscribeRequest):
     if req.model not in valid_models:
         raise HTTPException(status_code=400, detail=f"模型必须是: {', '.join(valid_models)}")
 
+    cache_key = _get_cache_key(url, req.model, req.with_timestamps)
     task_id = uuid.uuid4().hex[:12]
-    task = Task(task_id=task_id, url=url, model=req.model, with_timestamps=req.with_timestamps)
+    cached_result = _get_cache_result(cache_key)
+    task = Task(
+        task_id=task_id,
+        url=url,
+        model=req.model,
+        with_timestamps=req.with_timestamps,
+        cache_key=cache_key,
+    )
     tasks[task_id] = task
+
+    if cached_result:
+        task.result_text, task.work_dir = cached_result
+        task.status = TaskStatus.COMPLETED
+        task.progress_message = "已使用缓存结果"
+        return TaskResponse(task_id=task_id, status=task.status, message=task.progress_message)
 
     # 启动后台线程处理
     thread = threading.Thread(target=process_task, args=(task,), daemon=True)

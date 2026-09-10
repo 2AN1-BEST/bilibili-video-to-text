@@ -44,7 +44,9 @@ python app.py
 | medium | ~1.5GB | 较慢 | 高 | 专业场景 |
 | large | ~3GB | 最慢 | 最高 | 最高精度需求 |
 
-首次使用某个模型时会自动下载，之后会缓存在本地。
+首次使用某个模型时会自动下载，之后会缓存在本地。相同的视频链接、模型和时间戳选项会复用转写结果，默认保留 7 天。
+
+缓存位于 `temp/cache/`。服务启动时会强制清理上次运行遗留的临时任务目录，并自动清理超过 7 天的结果缓存。可通过环境变量 `CACHE_TTL_DAYS` 调整保留天数，例如 `CACHE_TTL_DAYS=30 python app.py`。
 
 ## 项目结构
 
@@ -59,7 +61,7 @@ bilibili-video-to-text/
 │   └── transcriber.py  # 语音转写（Whisper）
 ├── static/
 │   └── index.html      # Web 前端页面
-└── temp/               # 临时文件（自动清理）
+└── temp/               # 临时文件和转写结果缓存（按 TTL 自动清理）
 ```
 
 ## 常见问题
