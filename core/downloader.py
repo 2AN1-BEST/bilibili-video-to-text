@@ -35,10 +35,18 @@ def download_video(url: str, output_dir: str, progress_callback=None) -> str:
     cmd = [
         "yt-dlp",
         "--no-playlist",
-        "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        # 只做语音识别，优先下载最低画质且自带音频的文件，减少流量和超时概率。
+        "-f", "worst[ext=mp4]/worstvideo*+worstaudio/worst",
         "--merge-output-format", "mp4",
         "-o", output_template,
         "--no-overwrites",
+        "--continue",
+        "--retries", "20",
+        "--fragment-retries", "20",
+        "--retry-sleep", "exp=1:20",
+        "--socket-timeout", "60",
+        "--concurrent-fragments", "1",
+        "--force-ipv4",
         "--print", "after_move:filepath",
         # 绕过B站 412 反爬：完整浏览器请求头 + 视频页URL作为Referer
         "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
