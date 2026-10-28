@@ -80,18 +80,34 @@ bilibili_get_transcript(task_id)                    → 全文
 
 转写是重活（CPU 上耗时约为视频时长的数倍），长视频务必用异步方式，避免触发调用超时。
 
-### 4. 调试
+### 4. 调试与自检
 
 ```bash
-# 以 HTTP 方式启动，便于用 MCP Inspector 等工具连接
+# 以 HTTP 方式启动，端点为 http://127.0.0.1:8001/mcp
 uv run mcp_server.py --transport http --port 8001
+
+# 用 MCP Inspector 连接：Transport 选 Streamable HTTP，URL 填上面的端点
+npx -y @modelcontextprotocol/inspector
 
 # 按真实客户端方式拉起 stdio 服务，验证协议通信是否正常
 uv run python scripts/mcp_stdio_check.py
 
-# 冒烟测试
+# 冒烟测试（默认只跑离线用例，不联网、不转写）
 uv run pytest -q
 ```
+
+不想装 Inspector 时，用 curl 也能确认 HTTP 服务是否活着：
+
+```bash
+curl -X POST http://127.0.0.1:8001/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
+```
+
+返回含 `"serverInfo":{"name":"bilibili-video-to-text"...}` 的 SSE 消息即正常。
+
+验证缓存是否生效：对同一个链接用相同模型连发两次转写请求，第二次应命中缓存并在 1 秒左右返回 `completed`。
 
 ## Web 使用方法
 
@@ -147,6 +163,9 @@ A: 处理时间取决于视频时长和模型大小。无 GPU 时建议使用 ti
 **Q: MCP 客户端里看不到工具？**
 A: 先跑 `uv run python scripts/mcp_stdio_check.py` 确认服务本身正常；再检查配置里的
 `--directory` 是否指向项目根目录、uv 能否被客户端找到。
+
+**Q: HTTP 方式启动报 `KeyError: 'websockets-sansio'`：**
+A: uvicorn 版本过低。fastmcp 的 HTTP 传输需要 uvicorn>=0.35，执行 `uv sync` 更新依赖。
 
 **Q: 支持其他平台的视频吗？**
 A: yt-dlp 支持上千个网站，但本项目只校验了B站链接。修改 `core/pipeline.py` 中的

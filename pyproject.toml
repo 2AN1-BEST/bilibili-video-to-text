@@ -6,7 +6,8 @@ readme = "README.md"
 requires-python = ">=3.10,<3.13"
 dependencies = [
     "fastapi==0.115.6",
-    "uvicorn[standard]==0.34.0",
+    # fastmcp 的 HTTP 传输需要 uvicorn>=0.35（用到 websockets-sansio 协议实现）
+    "uvicorn[standard]>=0.35.0",
     "yt-dlp==2024.12.13",
     "openai-whisper==20240930",
     # fastmcp 需要 pydantic>=2.12.0（FastAPI 0.115 与之兼容）
