@@ -1,1 +1,7 @@
 temp/
+.venv/
+__pycache__/
+uv-sync.log
+uv-sync.err
+*.pyc
+.pytest_cache/

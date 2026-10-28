@@ -1,0 +1,58 @@
+[project]
+name = "bilibili-video-to-text"
+version = "0.2.0"
+description = "B站视频语音转文字：本地 Whisper 转写，同时提供 Web 服务与 MCP 服务"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "yt-dlp==2024.12.13",
+    "openai-whisper==20240930",
+    # fastmcp 需要 pydantic>=2.12.0（FastAPI 0.115 与之兼容）
+    "pydantic>=2.12.0",
+    "opencc-python-reimplemented==0.1.7",
+    "fastmcp>=2.10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.0",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+# PyTorch 走官方 CPU 源：PyPI 上的 Windows/Linux wheel 默认捆绑 CUDA 运行时（约 2.5GB+），
+# 本机无 NVIDIA GPU，用 CPU 源可显著减小体积。若机器有 NVIDIA GPU，把下面 [tool.uv.sources]
+# 整段删掉再执行 `uv sync` 即可装回带 CUDA 的 torch。
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchaudio = { index = "pytorch-cpu" }
+
+# openai-whisper 只提供 sdist，其 setup.py 用到了 pkg_resources，
+# 而新版 setuptools 已移除该模块，需把构建环境的 setuptools 降到仍带 pkg_resources 的版本
+[tool.uv.extra-build-dependencies]
+openai-whisper = ["setuptools<81"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+# 项目以「应用」方式运行（非 pip 包），让测试可以直接 import 顶层模块
+pythonpath = ["."]
+markers = ["e2e: 需要真实网络与 Whisper 模型的端到端用例"]

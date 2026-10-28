@@ -5,51 +5,48 @@ set "SCRIPT_DIR=%~dp0"
 cd /d "%SCRIPT_DIR%" || exit /b 1
 
 echo ========================================
-echo   Bilibili Video to Text - Environment Check and Startup
+echo   B站视频转文字 - 环境检查与启动
 echo ========================================
 echo.
-
-:: Check Python
-where python >nul 2>&1
-if not errorlevel 1 (
-    set "PYTHON_CMD=python"
-) else (
-    where py >nul 2>&1
-    if not errorlevel 1 (
-        set "PYTHON_CMD=py -3"
-    ) else (
-        echo [ERROR] Python was not found. Please install Python 3.9+.
-        echo Download: https://www.python.org/downloads/
-        pause
-        exit /b 1
-    )
-)
 
 :: Check ffmpeg
 where ffmpeg >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] ffmpeg was not found. Please install it and add it to PATH.
-    echo Download: https://ffmpeg.org/download.html
-    echo Or use: winget install ffmpeg
+    echo [ERROR] 未检测到 ffmpeg，请先安装并加入 PATH。
+    echo 下载: https://ffmpeg.org/download.html
+    echo 或执行: winget install ffmpeg
     pause
     exit /b 1
 )
 
-:: Install dependencies
-echo [1/2] Installing Python dependencies...
-%PYTHON_CMD% -m pip install -r requirements.txt -q
+:: Check uv (Python 版本与依赖均由 uv 管理)
+where uv >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Dependency installation failed.
+    echo [i] 未检测到 uv，正在安装...
+    winget install --id astral-sh.uv -e --accept-source-agreements --accept-package-agreements
+    if errorlevel 1 (
+        echo [ERROR] uv 安装失败，请手动安装: https://docs.astral.sh/uv/getting-started/installation/
+        pause
+        exit /b 1
+    )
+    set "PATH=%USERPROFILE%\.local\bin;%PATH%"
+)
+
+:: Sync dependencies
+echo [1/2] 同步依赖（首次会下载 Python 与 torch，请耐心等待）...
+uv sync
+if errorlevel 1 (
+    echo [ERROR] 依赖同步失败。
     pause
     exit /b 1
 )
 
-:: Start service
-echo [2/2] Starting service...
+:: Start web service
+echo [2/2] 启动 Web 服务...
 echo.
-%PYTHON_CMD% app.py
+uv run python app.py
 if errorlevel 1 (
-    echo [ERROR] The application exited unexpectedly.
+    echo [ERROR] 服务异常退出。
     pause
     exit /b 1
 )

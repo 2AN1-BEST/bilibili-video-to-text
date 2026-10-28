@@ -1,18 +1,33 @@
 """语音转写模块 - 使用 OpenAI Whisper 进行语音识别"""
 
-import whisper
-from opencc import OpenCC
-
-# 繁体转简体转换器
-_t2s = OpenCC("t2s")
-
+# Whisper / OpenCC 都改为懒加载：torch 导入较慢，避免拖慢 MCP 服务启动
+_whisper = None
+_t2s = None
 _model_cache = {}
+
+
+def _load_whisper():
+    global _whisper
+    if _whisper is None:
+        import whisper
+
+        _whisper = whisper
+    return _whisper
+
+
+def _get_converter():
+    global _t2s
+    if _t2s is None:
+        from opencc import OpenCC
+
+        _t2s = OpenCC("t2s")
+    return _t2s
 
 
 def get_model(model_name: str = "base"):
     """加载并缓存 Whisper 模型，避免重复加载。"""
     if model_name not in _model_cache:
-        _model_cache[model_name] = whisper.load_model(model_name)
+        _model_cache[model_name] = _load_whisper().load_model(model_name)
     return _model_cache[model_name]
 
 
@@ -58,7 +73,7 @@ def transcribe_audio(
             continue
         # 繁体转简体
         if language == "zh":
-            seg_text = _t2s.convert(seg_text)
+            seg_text = _get_converter().convert(seg_text)
         if with_timestamps:
             paragraphs.append(f"[{_format_timestamp(seg.get('start', 0))}] {seg_text}")
         else:
@@ -70,5 +85,5 @@ def transcribe_audio(
     # 兜底：无分段信息时直接使用整体文本
     text = result["text"].strip()
     if language == "zh":
-        text = _t2s.convert(text)
+        text = _get_converter().convert(text)
     return text
